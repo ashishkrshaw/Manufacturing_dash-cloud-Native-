@@ -651,6 +651,7 @@
     </div>
 
     <script>
+        // Single Lambda URL - handles both store and fetch
         const API_URL = "https://c85b4dtppc.execute-api.us-east-1.amazonaws.com/prod/machines";
 
         // Data storage for charts
@@ -861,14 +862,10 @@
         }
 
         function fetchData() {
-            fetch(API_URL, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    machine_id: "M-202",
-                    temperature: 75,
-                    vibration: 2.2
-                })
+            // GET request to single Lambda
+            fetch(API_URL + "?machine_id=M-202", {
+                method: "GET",
+                headers: { "Content-Type": "application/json" }
             })
                 .then(res => res.json())
                 .then(data => {
@@ -883,7 +880,9 @@
                     // Update status badge
                     updateStatus(data.prediction);
                 })
-                .catch(err => console.error('Error fetching data:', err));
+                .catch(err => {
+                    console.error('Error fetching data:', err);
+                });
         }
 
         // Fetch data every 5 seconds

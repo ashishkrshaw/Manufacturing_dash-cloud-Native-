@@ -3,9 +3,10 @@ import time
 import random
 import os
 
-API_URL = os.getenv["API_URL"]
+# Single Lambda URL - handles both store and fetch
+API_URL = os.getenv("API_URL", "https://c85b4dtppc.execute-api.us-east-1.amazonaws.com/prod/machines")
 
-machine_id = "M-500"
+machine_id = "M-202"
 
 def send_data(temp, vib):
     payload = {
