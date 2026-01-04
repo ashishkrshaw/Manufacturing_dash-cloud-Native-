@@ -1,14 +1,12 @@
 import json
 import os
-import pymysql
 import boto3
+from datetime import datetime
 from math import exp
 
-# RDS config (env variables)
-DB_HOST = os.environ['DB_HOST']
-DB_USER = os.environ['DB_USER']
-DB_PASS = os.environ['DB_PASS']
-DB_NAME = os.environ['DB_NAME']
+# S3 config
+S3_BUCKET = os.environ.get('S3_BUCKET', 'manufacturing-data-bucket')
+s3 = boto3.client('s3')
 
 # SNS
 SNS_TOPIC_ARN = os.environ.get('SNS_TOPIC_ARN', 'arn:aws:sns:us-east-1:746393611275:manufacturing-fault-alerts')
@@ -34,21 +32,59 @@ def predict(temp, vib):
         return "WARNING", max(confidence, 0.45)
     return "NORMAL", min(confidence, 0.30)
 
-def get_connection():
-    return pymysql.connect(
-        host=DB_HOST,
-        user=DB_USER,
-        password=DB_PASS,
-        database=DB_NAME,
-        connect_timeout=5
+def store_to_s3(machine_id, temperature, vibration, prediction='PENDING'):
+    """Store data to S3"""
+    timestamp = datetime.utcnow().isoformat()
+    data = {
+        'machine_id': machine_id,
+        'temperature': temperature,
+        'vibration': vibration,
+        'prediction': prediction,
+        'timestamp': timestamp
+    }
+    
+    # Store with timestamp in filename for unique keys
+    key = f"data/{machine_id}/{timestamp}.json"
+    s3.put_object(
+        Bucket=S3_BUCKET,
+        Key=key,
+        Body=json.dumps(data),
+        ContentType='application/json'
     )
+    
+    # Also store as "latest" for easy dashboard access
+    latest_key = f"latest/{machine_id}.json"
+    s3.put_object(
+        Bucket=S3_BUCKET,
+        Key=latest_key,
+        Body=json.dumps(data),
+        ContentType='application/json'
+    )
+    
+    return data
+
+def get_latest_from_s3(machine_id):
+    """Get latest data from S3"""
+    try:
+        key = f"latest/{machine_id}.json"
+        response = s3.get_object(Bucket=S3_BUCKET, Key=key)
+        data = json.loads(response['Body'].read().decode('utf-8'))
+        return data
+    except s3.exceptions.NoSuchKey:
+        return None
+    except Exception as e:
+        print(f"Error fetching from S3: {e}")
+        return None
 
 def lambda_handler(event, context):
     """
     Single Lambda handling both:
-    - POST: Store data from simulation
+    - POST: Store data from simulation to S3
     - GET: Fetch data for dashboard + ML prediction + SNS
     """
+    
+    # Add error logging
+    print(f"Event received: {json.dumps(event)}")
     
     http_method = event.get('httpMethod', 'POST')
     
@@ -66,19 +102,9 @@ def lambda_handler(event, context):
                 "body": json.dumps({"error": f"Invalid input: {str(e)}"})
             }
 
-        # Store in RDS
+        # Store in S3
         try:
-            conn = get_connection()
-            with conn.cursor() as cur:
-                cur.execute(
-                    """INSERT INTO machine_events 
-                       (event_time, machine_id, temperature, vibration, prediction)
-                       VALUES (NOW(), %s, %s, %s, 'PENDING')""",
-                    (machine_id, temperature, vibration)
-                )
-                conn.commit()
-                inserted_id = cur.lastrowid
-            conn.close()
+            data = store_to_s3(machine_id, temperature, vibration)
             
             print(f"✅ Stored: {machine_id} - Temp: {temperature}, Vib: {vibration}")
             
@@ -87,66 +113,56 @@ def lambda_handler(event, context):
                 "headers": {"Access-Control-Allow-Origin": "*"},
                 "body": json.dumps({
                     "message": "Data stored successfully",
-                    "id": inserted_id,
                     "machine_id": machine_id,
                     "temperature": temperature,
-                    "vibration": vibration
+                    "vibration": vibration,
+                    "timestamp": data['timestamp']
                 })
             }
         except Exception as e:
-            print(f"❌ DB Error: {e}")
+            print(f"❌ S3 Error: {e}")
+            import traceback
+            print(traceback.format_exc())
             return {
                 "statusCode": 500,
                 "headers": {"Access-Control-Allow-Origin": "*"},
-                "body": json.dumps({"error": f"Database error: {str(e)}"})
+                "body": json.dumps({"error": f"Storage error: {str(e)}"})
             }
     
     # ========== GET: Fetch Data + ML + SNS (for dashboard) ==========
     elif http_method == 'GET':
-        machine_id = event.get('queryStringParameters', {}).get('machine_id', 'M-202')
+        machine_id = 'M-202'
+        if event.get('queryStringParameters'):
+            machine_id = event.get('queryStringParameters', {}).get('machine_id', 'M-202')
         
         try:
-            conn = get_connection()
-            with conn.cursor(pymysql.cursors.DictCursor) as cur:
-                # Fetch latest data
-                cur.execute(
-                    """SELECT machine_id, temperature, vibration, event_time 
-                       FROM machine_events 
-                       WHERE machine_id = %s 
-                       ORDER BY event_time DESC 
-                       LIMIT 1""",
-                    (machine_id,)
-                )
-                row = cur.fetchone()
-            conn.close()
+            # Fetch latest data from S3
+            data = get_latest_from_s3(machine_id)
             
-            if not row:
+            if not data:
                 return {
                     "statusCode": 404,
                     "headers": {"Access-Control-Allow-Origin": "*"},
                     "body": json.dumps({"error": "No data found for machine"})
                 }
             
-            temperature = float(row['temperature'])
-            vibration = float(row['vibration'])
+            temperature = float(data['temperature'])
+            vibration = float(data['vibration'])
             
             # Apply ML prediction
             prediction, confidence = predict(temperature, vibration)
             
-            # Update prediction in RDS
+            # Update prediction in S3
             try:
-                conn = get_connection()
-                with conn.cursor() as cur:
-                    cur.execute(
-                        """UPDATE machine_events 
-                           SET prediction = %s 
-                           WHERE machine_id = %s 
-                           ORDER BY event_time DESC 
-                           LIMIT 1""",
-                        (prediction, machine_id)
-                    )
-                    conn.commit()
-                conn.close()
+                data['prediction'] = prediction
+                data['confidence'] = round(confidence, 2)
+                latest_key = f"latest/{machine_id}.json"
+                s3.put_object(
+                    Bucket=S3_BUCKET,
+                    Key=latest_key,
+                    Body=json.dumps(data),
+                    ContentType='application/json'
+                )
             except Exception as e:
                 print(f"⚠️ Update Error: {e}")
             
@@ -166,7 +182,7 @@ Confidence: {confidence:.0%}
 Status: FAULT EXPECTED SOON
 Action Required: Immediate inspection recommended.
 
-Timestamp: {row['event_time']}"""
+Timestamp: {data['timestamp']}"""
                     )
                     print(f"📧 SNS Alert sent for {machine_id}")
                 except Exception as e:
@@ -185,12 +201,14 @@ Timestamp: {row['event_time']}"""
                     "vibration": vibration,
                     "prediction": prediction,
                     "confidence": round(confidence, 2),
-                    "timestamp": str(row['event_time'])
+                    "timestamp": data['timestamp']
                 })
             }
             
         except Exception as e:
             print(f"❌ Error: {e}")
+            import traceback
+            print(traceback.format_exc())
             return {
                 "statusCode": 500,
                 "headers": {"Access-Control-Allow-Origin": "*"},
