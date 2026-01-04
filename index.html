@@ -1,25 +1,44 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
-    <title>Smart Manufacturing Dashboard</title>
+    <meta charset="UTF-8">
+    <title>Manufacturing Dashboard</title>
     <style>
         body {
-            font-family: Arial;
-            background: #0f172a;
-            color: white;
+            font-family: Arial, sans-serif;
+            background: #f4f6f8;
         }
 
         .card {
-            background: #111827;
+            background: white;
             padding: 20px;
-            border-radius: 8px;
-            width: 420px;
-            margin: 40px auto;
+            width: 400px;
+            margin: 60px auto;
+            border-radius: 6px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h2 {
+            text-align: center;
+        }
+
+        input,
+        button {
+            width: 100%;
+            padding: 10px;
+            margin-top: 10px;
+        }
+
+        button {
+            background: #2563eb;
+            color: white;
+            border: none;
+            cursor: pointer;
         }
 
         .NORMAL {
-            color: lightgreen;
+            color: green;
         }
 
         .WARNING {
@@ -30,31 +49,24 @@
             color: red;
             font-weight: bold;
         }
-
-        input,
-        button {
-            width: 100%;
-            padding: 10px;
-            margin: 6px 0;
-        }
     </style>
 </head>
 
 <body>
 
     <div id="login" class="card">
-        <h3>🔐 Login</h3>
+        <h2>Login</h2>
         <input id="u" placeholder="Username">
         <input id="p" type="password" placeholder="Password">
         <button onclick="login()">Login</button>
     </div>
 
-    <div id="dash" class="card" style="display:none">
-        <h3>🏭 Machine Prediction</h3>
-        <p><b>Machine:</b> <span id="m"></span></p>
+    <div id="dashboard" class="card" style="display:none">
+        <h2>Machine Status</h2>
+        <p><b>Machine ID:</b> <span id="m"></span></p>
         <p><b>Temperature:</b> <span id="t"></span></p>
         <p><b>Vibration:</b> <span id="v"></span></p>
-        <p><b>Status:</b> <span id="s"></span></p>
+        <p><b>Prediction:</b> <span id="s"></span></p>
     </div>
 
     <script>
@@ -63,29 +75,29 @@
         function login() {
             if (u.value === "admin" && p.value === "Secure@123") {
                 document.getElementById("login").style.display = "none";
-                document.getElementById("dash").style.display = "block";
+                document.getElementById("dashboard").style.display = "block";
             } else {
-                alert("Invalid credentials");
+                alert("Invalid username or password");
             }
         }
 
         setInterval(() => {
             fetch(API_URL, {
                 method: "POST",
-                headers: { 'Content-Type': 'application/json' },
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     machine_id: "M-202",
                     temperature: 75,
                     vibration: 2.2
                 })
             })
-                .then(r => r.json())
-                .then(d => {
-                    m.innerText = d.machine_id;
-                    t.innerText = d.temperature;
-                    v.innerText = d.vibration;
-                    s.innerText = d.prediction;
-                    s.className = d.prediction;
+                .then(res => res.json())
+                .then(data => {
+                    m.innerText = data.machine_id;
+                    t.innerText = data.temperature;
+                    v.innerText = data.vibration;
+                    s.innerText = data.prediction;
+                    s.className = data.prediction;
                 });
         }, 5000);
     </script>
