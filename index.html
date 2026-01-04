@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Smart Manufacturing Dashboard</title>
+    <style>
+        body {
+            font-family: Arial;
+            background: #f4f6f8;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            background: white;
+        }
+
+        th,
+        td {
+            border: 1px solid #ccc;
+            padding: 8px;
+            text-align: center;
+        }
+
+        th {
+            background: #222;
+            color: white;
+        }
+
+        .NORMAL {
+            color: green;
+        }
+
+        .WARNING {
+            color: orange;
+        }
+
+        .FAULT {
+            color: red;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h2>🏭 Smart Manufacturing – Machine Health</h2>
+
+    <table id="dataTable">
+        <thead>
+            <tr>
+                <th>Timestamp</th>
+                <th>Machine</th>
+                <th>Temp (°C)</th>
+                <th>Vibration</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <script>
+        fetch("https://c85b4dtppc.execute-api.us-east-1.amazonaws.com/prod/machines")
+            .then(res => res.json())
+            .then(result => {
+                const rows = result.data;
+                const table = document.querySelector("#dataTable tbody");
+
+                rows.forEach(r => {
+                    table.innerHTML += `
+        <tr>
+          <td>${r.timestamp}</td>
+          <td>${r.machine_id}</td>
+          <td>${r.temperature}</td>
+          <td>${r.vibration}</td>
+          <td class="${r.status}">${r.status}</td>
+        </tr>`;
+                });
+            });
+    </script>
+
+</body>
+
+</html>
