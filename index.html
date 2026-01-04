@@ -6,77 +6,88 @@
     <style>
         body {
             font-family: Arial;
-            background: #f4f6f8;
-        }
-
-        table {
-            border-collapse: collapse;
-            width: 100%;
-            background: white;
-        }
-
-        th,
-        td {
-            border: 1px solid #ccc;
-            padding: 8px;
-            text-align: center;
-        }
-
-        th {
-            background: #222;
+            background: #0f172a;
             color: white;
         }
 
+        .card {
+            background: #111827;
+            padding: 20px;
+            border-radius: 8px;
+            width: 420px;
+            margin: 40px auto;
+        }
+
         .NORMAL {
-            color: green;
+            color: lightgreen;
         }
 
         .WARNING {
             color: orange;
         }
 
-        .FAULT {
+        .FAULT_SOON {
             color: red;
             font-weight: bold;
+        }
+
+        input,
+        button {
+            width: 100%;
+            padding: 10px;
+            margin: 6px 0;
         }
     </style>
 </head>
 
 <body>
 
-    <h2>🏭 Smart Manufacturing – Machine Health</h2>
+    <div id="login" class="card">
+        <h3>🔐 Login</h3>
+        <input id="u" placeholder="Username">
+        <input id="p" type="password" placeholder="Password">
+        <button onclick="login()">Login</button>
+    </div>
 
-    <table id="dataTable">
-        <thead>
-            <tr>
-                <th>Timestamp</th>
-                <th>Machine</th>
-                <th>Temp (°C)</th>
-                <th>Vibration</th>
-                <th>Status</th>
-            </tr>
-        </thead>
-        <tbody></tbody>
-    </table>
+    <div id="dash" class="card" style="display:none">
+        <h3>🏭 Machine Prediction</h3>
+        <p><b>Machine:</b> <span id="m"></span></p>
+        <p><b>Temperature:</b> <span id="t"></span></p>
+        <p><b>Vibration:</b> <span id="v"></span></p>
+        <p><b>Status:</b> <span id="s"></span></p>
+    </div>
 
     <script>
-        fetch("https://c85b4dtppc.execute-api.us-east-1.amazonaws.com/prod/machines")
-            .then(res => res.json())
-            .then(result => {
-                const rows = result.data;
-                const table = document.querySelector("#dataTable tbody");
+        const API_URL = "https://c85b4dtppc.execute-api.us-east-1.amazonaws.com/prod/machines";
 
-                rows.forEach(r => {
-                    table.innerHTML += `
-        <tr>
-          <td>${r.timestamp}</td>
-          <td>${r.machine_id}</td>
-          <td>${r.temperature}</td>
-          <td>${r.vibration}</td>
-          <td class="${r.status}">${r.status}</td>
-        </tr>`;
+        function login() {
+            if (u.value === "admin" && p.value === "Secure@123") {
+                document.getElementById("login").style.display = "none";
+                document.getElementById("dash").style.display = "block";
+            } else {
+                alert("Invalid credentials");
+            }
+        }
+
+        setInterval(() => {
+            fetch(API_URL, {
+                method: "POST",
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    machine_id: "M-202",
+                    temperature: 75,
+                    vibration: 2.2
+                })
+            })
+                .then(r => r.json())
+                .then(d => {
+                    m.innerText = d.machine_id;
+                    t.innerText = d.temperature;
+                    v.innerText = d.vibration;
+                    s.innerText = d.prediction;
+                    s.className = d.prediction;
                 });
-            });
+        }, 5000);
     </script>
 
 </body>
